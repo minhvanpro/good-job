@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import path from "path";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
@@ -44,25 +45,15 @@ app.use("/api/notifications", notificationController);
 app.use("/api/users", userController);
 app.use("/api/upload", uploadController);
 
-app.get("/", (_req, res) => {
-  res.json({
-    name: "Good Job API",
-    version: "1.0.0",
-    status: "running",
-    endpoints: {
-      auth: "/api/auth",
-      kudos: "/api/kudos",
-      rewards: "/api/rewards",
-      feed: "/api/feed",
-      notifications: "/api/notifications",
-      users: "/api/users",
-      health: "/api/health",
-    },
-  });
-});
-
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+const publicDir = path.join(__dirname, "..", "public");
+app.use(express.static(publicDir));
+
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
 });
 
 app.use(errorHandler);

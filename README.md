@@ -26,7 +26,10 @@ A full-stack employee recognition platform where team members can send Kudos (pr
 
 ### Infrastructure
 - **Containerization**: Docker Compose (PostgreSQL + Redis)
-- **CI/CD**: GitHub Actions (lint, type-check, test, deploy)
+- **Hosting**: Railway.app (single backend service serving API + frontend)
+- **Database**: Railway-managed PostgreSQL
+- **Cache/Queue**: Railway-managed Redis
+- **Media Storage**: Cloudinary
 
 ## Architecture Decisions
 
@@ -145,7 +148,63 @@ Visit **http://localhost:5173** — the Vite dev server proxies `/api` requests 
 docker compose up --build
 ```
 
-This starts all services: PostgreSQL, Redis, Backend (port 4000), Frontend (port 3000).
+This starts all services: PostgreSQL, Redis, and Backend (port 4000). The backend serves both the API and the production-built frontend.
+
+## Deployment (Railway.app)
+
+The app is designed for one-command deployment on [Railway.app](https://railway.app) — a single backend service serves both the API and the production frontend.
+
+### Architecture
+
+```
+User → Railway Backend (port 4000)
+         ├── /api/* → Express API routes
+         ├── /socket.io/* → WebSocket (Socket.IO)
+         └── /* → Static frontend (SPA fallback to index.html)
+```
+
+Railway add-ons:
+- **PostgreSQL** — managed database
+- **Redis** — managed cache/queue/pub-sub
+
+### One-Click Deploy
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/minhvanpro/good-job)
+
+### Manual Deploy Steps
+
+1. **Create Railway account** at [railway.app](https://railway.app) (login with GitHub)
+2. **Create project** → "Deploy from GitHub repo" → select `minhvanpro/good-job`
+3. **Add PostgreSQL** → Railway auto-provisions and provides `DATABASE_URL`
+4. **Add Redis** → Railway auto-provisions and provides `REDIS_URL`
+5. **Set environment variables** in Railway dashboard:
+
+   | Variable | Value |
+   |----------|-------|
+   | `JWT_SECRET` | Generate a strong random secret |
+   | `CLOUDINARY_CLOUD_NAME` | Your Cloudinary cloud name |
+   | `CLOUDINARY_API_KEY` | Your Cloudinary API key |
+   | `CLOUDINARY_API_SECRET` | Your Cloudinary API secret |
+   | `CORS_ORIGIN` | Leave empty (same-origin in production) |
+
+6. **Run database migrations** via Railway shell:
+   ```bash
+   npx prisma migrate deploy
+   ```
+7. **Seed the database** (optional):
+   ```bash
+   npx tsx src/db/seed.ts
+   ```
+
+Railway auto-detects the `Dockerfile` in the `backend/` directory and builds the multi-stage image. The frontend is built during Docker build and served as static files by the Express backend.
+
+### Production Build Notes
+
+- Frontend is built with `Vite` → minified assets in `dist/`
+- Backend is compiled with `tsc` → output in `dist/`
+- Single Docker image contains both (multi-stage build)
+- No `console.log` in production code
+- Health check at `/api/health`
 
 ## Available Scripts
 
