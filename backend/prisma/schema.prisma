@@ -1,0 +1,181 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CoreValue {
+  Teamwork
+  Ownership
+  Innovation
+  Integrity
+  Excellence
+  Respect
+}
+
+enum ReactionIcon {
+  thumb_up
+  favorite
+  celebration
+  whatshot
+  fitness_center
+  star
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  password  String
+  avatarUrl String?
+
+  // Giving budget: 200 points/month, reset on 1st
+  monthlyBudget     Int      @default(200)
+  budgetSpent       Int      @default(0)
+  budgetResetAt     DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  kudosSent       Kudo[]          @relation("KudosSent")
+  kudosReceived   Kudo[]          @relation("KudosReceived")
+  redemptions     Redemption[]
+  ledgerEntries   PointLedger[]
+  reactions       KudoReaction[]
+  comments        KudoComment[]
+  notifications   Notification[]
+
+  @@map("users")
+}
+
+model Kudo {
+  id           String    @id @default(uuid())
+  points       Int       // 10-50
+  description  String
+  coreValue    CoreValue
+  createdAt    DateTime  @default(now())
+
+  fromUserId String
+  toUserId   String
+
+  fromUser User @relation("KudosSent", fields: [fromUserId], references: [id])
+  toUser   User @relation("KudosReceived", fields: [toUserId], references: [id])
+
+  reactions   KudoReaction[]
+  comments    KudoComment[]
+  media       KudoMedia[]
+
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([createdAt])
+  @@map("kudos")
+}
+
+model KudoMedia {
+  id       String @id @default(uuid())
+  url      String
+  type     String // "image" | "video"
+  duration Int?   // seconds, for video
+
+  kudoId String
+  kudo   Kudo @relation(fields: [kudoId], references: [id], onDelete: Cascade)
+
+  @@map("kudo_media")
+}
+
+model KudoReaction {
+  id      String       @id @default(uuid())
+  icon    ReactionIcon
+
+  kudoId String
+  userId String
+
+  kudo Kudo @relation(fields: [kudoId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([kudoId, userId, icon])
+  @@map("kudo_reactions")
+}
+
+model KudoComment {
+  id        String   @id @default(uuid())
+  content   String
+  mediaUrl  String?
+  createdAt DateTime @default(now())
+
+  kudoId String
+  userId String
+
+  kudo Kudo @relation(fields: [kudoId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("kudo_comments")
+}
+
+model RewardCatalog {
+  id        String  @id @default(uuid())
+  name      String
+  description String?
+  costPoints Int
+  stock     Int?    // null = unlimited
+  imageUrl  String?
+  isActive  Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  redemptions Redemption[]
+
+  @@map("reward_catalog")
+}
+
+model Redemption {
+  id              String   @id @default(uuid())
+  pointsSpent     Int
+  status          String   @default("pending") // pending | fulfilled | cancelled
+  idempotencyKey  String   @unique
+  createdAt       DateTime @default(now())
+
+  userId   String
+  rewardId String
+
+  user   User           @relation(fields: [userId], references: [id])
+  reward RewardCatalog  @relation(fields: [rewardId], references: [id])
+
+  @@index([userId])
+  @@index([idempotencyKey])
+  @@map("redemptions")
+}
+
+// Event Sourcing / Audit Trail
+model PointLedger {
+  id          String   @id @default(uuid())
+  delta       Int      // positive = received, negative = spent
+  balanceAfter Int     // running balance after this entry
+  reason      String   // "kudo_sent" | "kudo_received" | "redeemed" | "budget_reset"
+  referenceId String?  // Kudo.id or Redemption.id
+  createdAt   DateTime @default(now())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("point_ledger")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  type      String   // "kudo_received" | "tagged" | "redeemed"
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  @@index([userId, read])
+  @@map("notifications")
+}
